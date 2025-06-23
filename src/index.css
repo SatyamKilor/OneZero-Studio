@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+@font-face {
+    font-family: Kulim_Park;
+    src: url("/fonts/KulimPark-Light.ttf");
+}
+
+@font-face {
+    font-family: manrope;
+    src: url("/fonts/Manrope/Manrope-VariableFont_wght.ttf");
+}
+
+#font1{
+    font-family: Kulim_Park;
+}
+
+#font2{
+  font-family: manrope;
+}
+
+.bg-custom-gradient {
+  background: linear-gradient(90deg, #fff, rgba(255, 255, 255, 0.3));
+}
+
+.bg-custom-text-gradient {
+  background: linear-gradient(90deg, #fff, rgba(255, 255, 255, 0.3));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+@keyframes slow-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.slow-spin {
+  animation: slow-spin 3s linear infinite;
+}
