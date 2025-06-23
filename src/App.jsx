@@ -10,6 +10,9 @@ const App = () => {
   const [imagesLoaded, setImagesLoaded] = useState(false);
   const [loadedCount, setLoadedCount] = useState(0); // ✅ Progress tracker
 
+  const preLoadedImages = useRef([]);
+  const canvasRef = useRef(null);
+
   const rightRef = useRef(null);
   const falldowntextRef1 = useRef(null);
   const falldowntextRef2 = useRef(null);
@@ -115,72 +118,153 @@ const App = () => {
 
   // Preload images with progress tracking
  useEffect(() => {
-  const cacheAndPreloadImages = async () => {
-    const cache = await caches.open('frame-cache');
+  const preloadAllImages = async ()=>{
 
-    const promises = [];
+    const imagesToLoad = [];
 
-    for (let i = 1; i <= totalFrames; i++) {
-      const padded = String(i).padStart(4, '0');
-      const url = `/videos/${padded}.png`;
-
-      const promise = cache.match(url).then(async (cached) => {
-        if (cached) {
-          setLoadedCount(prev => prev + 1);
-          return;
-        }
-
-        try {
-          const response = await fetch(url, { mode: 'cors' });
-          if (response.ok) {
-            await cache.put(url, response.clone());
-            setLoadedCount(prev => prev + 1);
-          }
-        } catch (error) {
-          console.error(`Error loading ${url}:`, error);
-        }
-      });
-
-      promises.push(promise);
+    for(let i = 1; i<=totalFrames; i++){
+      const paded = String(i).padStart(4, '0');
+      imagesToLoad.push(`/videos/${paded}.png`);
     }
 
-    await Promise.all(promises);
-    setImagesLoaded(true);
-  };
+    let loaded = 0;
+    const images = [];
 
-  cacheAndPreloadImages();
+    await Promise.all(
+      imagesToLoad.map((url, index)=>{
+        return new Promise((resolve)=>{
+          const img = new Image();
+          img.src = url;
+
+          img.onload = () => {
+            images[index] = img;
+            loaded++;
+            setLoadedCount(loaded); // ✅ Update loaded count
+            resolve();
+          };
+
+          img.onerror = (e) => {
+            console.error(`Error Loading ${url}:`, e);
+            loaded++;
+            setLoadedCount(loaded); // ✅ Update loaded count even on error
+            images[index] = null; // Store null for failed loads
+            resolve();
+          };
+        });
+      })
+    );
+
+    preLoadedImages.current = images.filter(Boolean);
+    setImagesLoaded(true); // ✅ Set imagesLoaded to true after all images are loaded
+
+  }
+
+  preloadAllImages();
 }, []);
 
 
   // Animation loop
-  useEffect(() => {
-    if (!imagesLoaded) return;
+useEffect(() => {
+    // Only proceed if images are loaded and canvas ref is available and images are actually preloaded
+    if (!imagesLoaded || !canvasRef.current || preLoadedImages.current.length === 0) return;
 
-    const interval = setInterval(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
 
-      setFrame(prevFrame => {
-        const nextFrame = prevFrame + direction;
+    /**
+     * Draws the image corresponding to the current frame onto the canvas.
+     * @param {number} currentFrame The 1-based index of the frame to draw.
+     */
+    const drawFrame = (currentFrame) => {
+      // Get the image object from the preloadedImages ref (adjusting for 0-based array index)
+      const img = preLoadedImages.current[currentFrame - 1];
+      if (!ctx || !img) return; // Ensure context and image are available
 
-        if (nextFrame > totalFrames) {
-          setDirection(-1);
-          return prevFrame;
-        }
+      ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the entire canvas before drawing
 
-        if (nextFrame < 1) {
-          setDirection(1);
-          return prevFrame;
-        }
+      // Calculate ratios to scale the image to cover the canvas, maintaining aspect ratio
+      const hRatio = canvas.width / img.width;
+      const vRatio = canvas.height / img.height;
+      const ratio = Math.max(hRatio, vRatio); // Use the larger ratio to ensure coverage
 
-        return nextFrame;
-      });
+      // Calculate new dimensions for the image on the canvas
+      const newWidth = img.width * ratio;
+      const newHeight = img.height * ratio;
 
-    }, 1000 / frameRate);
+      // Calculate position to center the image on the canvas
+      const x = (canvas.width - newWidth) / 2;
+      const y = (canvas.height - newHeight) / 2;
 
-    return () => clearInterval(interval);
-  }, [direction, imagesLoaded]);
+      // Draw the image onto the canvas
+      ctx.drawImage(img, x, y, newWidth, newHeight);
+    };
 
-  const paddedFrame = String(frame).padStart(4, '0');
-  const imageSrc = `/videos/${paddedFrame}.png`;
+    /**
+     * Sets the canvas dimensions to match its parent container, ensuring responsiveness.
+     * This is called on initial load and whenever the window is resized.
+     */
+    const setCanvasSize = () => {
+      if (scaleRef.current) {
+        const parent = scaleRef.current; // The container div for the canvas
+        canvas.width = parent.offsetWidth;
+        canvas.height = parent.offsetHeight;
+        // Redraw the current frame immediately after resize to prevent visual glitches
+        drawFrame(frame); // This call is now safe as drawFrame is defined above
+      }
+    };
+
+    let animationFrameId; // To store the ID returned by requestAnimationFrame
+    let lastTimestamp = 0; // To track the last time a frame was drawn
+    const frameDuration = 1000 / frameRate; // Desired duration for each frame in milliseconds
+
+    /**
+     * The main animation loop, called by requestAnimationFrame.
+     * @param {DOMHighResTimeStamp} timestamp The current time provided by requestAnimationFrame.
+     */
+    const animate = (timestamp) => {
+      // Initialize lastTimestamp on the first call
+      if (!lastTimestamp) lastTimestamp = timestamp;
+      const elapsed = timestamp - lastTimestamp; // Time elapsed since last frame draw
+
+      // Check if enough time has passed to advance to the next frame
+      if (elapsed > frameDuration) {
+        // Adjust lastTimestamp to maintain a consistent frame rate
+        lastTimestamp = timestamp - (elapsed % frameDuration);
+
+        // Update the current frame state
+        setFrame(prevFrame => {
+          let nextFrame = prevFrame + direction;
+
+          // Logic to reverse animation direction when boundaries are reached
+          if (nextFrame > totalFrames) {
+            setDirection(-1); // Reverse to go backward
+            nextFrame = totalFrames; // Cap at the last frame
+          } else if (nextFrame < 1) {
+            setDirection(1); // Reverse to go forward
+            nextFrame = 1; // Cap at the first frame
+          }
+          // Draw the newly calculated frame
+          drawFrame(nextFrame);
+          return nextFrame;
+        });
+      }
+      // Request the next animation frame
+      animationFrameId = requestAnimationFrame(animate);
+    };
+
+    // Set initial canvas size and add event listener for window resize
+    setCanvasSize(); // Call setCanvasSize after drawFrame is defined
+    window.addEventListener('resize', setCanvasSize);
+
+    animationFrameId = requestAnimationFrame(animate); // Start the animation loop
+
+    // Cleanup function for this useEffect, runs on component unmount or when dependencies change
+    return () => {
+      cancelAnimationFrame(animationFrameId); // Stop the animation loop
+      window.removeEventListener('resize', setCanvasSize); // Clean up the resize listener
+    };
+  }, [imagesLoaded, direction, frameRate, totalFrames, frame, setFrame, setDirection]);
+
 
   // Show loading screen with progress bar
   if (!imagesLoaded) {
@@ -425,7 +509,12 @@ const App = () => {
       >
         
 
-        <img className='w-full h-full object-cover' src={imageSrc} alt="" />
+        {/* <img className='w-full h-full object-cover' src={imageSrc} alt="" /> */}
+
+        <canvas
+        ref={canvasRef}
+        className='w-full h-full object-cover'
+      ></canvas>
 
         {/* Transparent overlay to block mobile long press */}
         <div
