@@ -395,7 +395,7 @@ const App = () => {
       lg:transform-none
 
       text-center lg:text-left
-      text-3xl lg:text-[3.6vh]
+      text-[3.6vh] lg:text-[3.6vh]
      text-red-800
       font-semibold
       font-['Manrope']
