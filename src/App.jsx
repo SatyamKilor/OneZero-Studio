@@ -117,57 +117,40 @@ const App = () => {
  useEffect(() => {
   const cacheAndPreloadImages = async () => {
     const cache = await caches.open('frame-cache');
-    let loaded = 0;
 
-    const promises = Array.from({ length: totalFrames }, async (_, i) => {
-      const padded = String(i + 1).padStart(4, '0');
+    const promises = [];
+
+    for (let i = 1; i <= totalFrames; i++) {
+      const padded = String(i).padStart(4, '0');
       const url = `/videos/${padded}.png`;
 
-      // Check if image already cached
-      const cached = await cache.match(url);
-      if (cached) {
-        loaded += 1;
-        setLoadedCount(loaded);
-        return;
-      }
+      const promise = cache.match(url).then(async (cached) => {
+        if (cached) {
+          setLoadedCount(prev => prev + 1);
+          return;
+        }
 
-      try {
-        const response = await fetch(url, { mode: 'cors' });
-        if (!response.ok) throw new Error(`Failed to fetch ${url}`);
-        await cache.put(url, response.clone());
-        loaded += 1;
-        setLoadedCount(loaded);
-      } catch (error) {
-        console.error(`Error caching image ${url}:`, error);
-      }
-    });
+        try {
+          const response = await fetch(url, { mode: 'cors' });
+          if (response.ok) {
+            await cache.put(url, response.clone());
+            setLoadedCount(prev => prev + 1);
+          }
+        } catch (error) {
+          console.error(`Error loading ${url}:`, error);
+        }
+      });
+
+      promises.push(promise);
+    }
 
     await Promise.all(promises);
     setImagesLoaded(true);
   };
 
+  cacheAndPreloadImages();
+}, []);
 
-      //   return new Promise((resolve, reject) => {
-      //     img.onload = () => {
-      //       loaded += 1;
-      //       setLoadedCount(loaded); // ✅ Update loaded count
-      //       resolve();
-      //     };
-      //     img.onerror = reject;
-      //   });
-      // });
-
-    //   try {
-    //     await Promise.all(promises);
-    //     setImagesLoaded(true);
-    //   } catch (err) {
-    //     console.error('Error loading images', err);
-    //   }
-    // };
-    
-
-    cacheAndPreloadImages();
-  }, []);
 
   // Animation loop
   useEffect(() => {
