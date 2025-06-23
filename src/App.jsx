@@ -114,34 +114,59 @@ const App = () => {
   },[imagesLoaded]);
 
   // Preload images with progress tracking
-  useEffect(() => {
-    const preloadImages = async () => {
-      let loaded = 0;
+ useEffect(() => {
+  const cacheAndPreloadImages = async () => {
+    const cache = await caches.open('frame-cache');
+    let loaded = 0;
 
-      const promises = Array.from({ length: totalFrames }, (_, i) => {
-        const padded = String(i + 1).padStart(4, '0');
-        const img = new Image();
-        img.src = `/videos/${padded}.png`;
+    const promises = Array.from({ length: totalFrames }, async (_, i) => {
+      const padded = String(i + 1).padStart(4, '0');
+      const url = `/videos/${padded}.png`;
 
-        return new Promise((resolve, reject) => {
-          img.onload = () => {
-            loaded += 1;
-            setLoadedCount(loaded); // ✅ Update loaded count
-            resolve();
-          };
-          img.onerror = reject;
-        });
-      });
+      // Check if image already cached
+      const cached = await cache.match(url);
+      if (cached) {
+        loaded += 1;
+        setLoadedCount(loaded);
+        return;
+      }
 
       try {
-        await Promise.all(promises);
-        setImagesLoaded(true);
-      } catch (err) {
-        console.error('Error loading images', err);
+        const response = await fetch(url, { mode: 'cors' });
+        if (!response.ok) throw new Error(`Failed to fetch ${url}`);
+        await cache.put(url, response.clone());
+        loaded += 1;
+        setLoadedCount(loaded);
+      } catch (error) {
+        console.error(`Error caching image ${url}:`, error);
       }
-    };
+    });
 
-    preloadImages();
+    await Promise.all(promises);
+    setImagesLoaded(true);
+  };
+
+
+      //   return new Promise((resolve, reject) => {
+      //     img.onload = () => {
+      //       loaded += 1;
+      //       setLoadedCount(loaded); // ✅ Update loaded count
+      //       resolve();
+      //     };
+      //     img.onerror = reject;
+      //   });
+      // });
+
+    //   try {
+    //     await Promise.all(promises);
+    //     setImagesLoaded(true);
+    //   } catch (err) {
+    //     console.error('Error loading images', err);
+    //   }
+    // };
+    
+
+    cacheAndPreloadImages();
   }, []);
 
   // Animation loop
